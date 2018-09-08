@@ -3,7 +3,10 @@
 ## AWS Dev Setup
 
 * [Install Python + PIP + AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/awscli-install-windows.html#awscli-install-windows-pip)
-* [Update PIP](python -m pip install --upgrade pip)
+* Update PIP
+
+    `python -m pip install --upgrade pip`
+
 * [Install SSH client for connecting to EC2 instances](PuTTY)(https://www.putty.org/)
 
 ## Cloud Formation Examples
