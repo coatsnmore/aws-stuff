@@ -1,0 +1,317 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  AWS CloudFormation sample template that contains a single Lambda function
+  behind an API Gateway
+Resources:
+  GreetingLambda:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Code:
+        ZipFile: !Join 
+          - |+
+
+          - - '''use strict'';'
+            - ''
+            - // Greeter Lambda
+            - 'exports.handler = (event, context, callback) => {'
+            - '  console.log(''Event:'', JSON.stringify(event));'
+            - '  const name = event.name || ''World'';'
+            - '  const response = {greeting: `Hello, ${name}!`};'
+            - '  callback(null, response);'
+            - '};'
+      Description: A greeting function
+      FunctionName: GreetingLambda
+      Handler: index.handler
+      Role: !GetAtt 
+        - LambdaExecutionRole
+        - Arn
+      Runtime: nodejs4.3
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 7a920828-29d1-41fc-9dd6-bc84f956037f
+  LambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 7db9701a-1c45-4b2e-9d0b-053301ebfd62
+  GreetingApi:
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Name: Greeting API
+      Description: API used for Greeting requests
+      FailOnWarnings: true
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 56a56554-d271-4172-a993-fdaeede7e8d3
+  LambdaPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:invokeFunction'
+      FunctionName: !GetAtt 
+        - GreetingLambda
+        - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Join 
+        - ''
+        - - 'arn:aws:execute-api:'
+          - !Ref 'AWS::Region'
+          - ':'
+          - !Ref 'AWS::AccountId'
+          - ':'
+          - !Ref GreetingApi
+          - /*
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: ef15fb8c-650d-43fa-88ba-e0ffec9630ae
+  ApiGatewayCloudWatchLogsRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - apigateway.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: ApiGatewayLogsPolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:CreateLogGroup'
+                  - 'logs:CreateLogStream'
+                  - 'logs:DescribeLogGroups'
+                  - 'logs:DescribeLogStreams'
+                  - 'logs:PutLogEvents'
+                  - 'logs:GetLogEvents'
+                  - 'logs:FilterLogEvents'
+                Resource: '*'
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 5aa8b1eb-c877-49df-9c3d-0aee7ce9ffc0
+  ApiGatewayAccount:
+    Type: 'AWS::ApiGateway::Account'
+    Properties:
+      CloudWatchRoleArn: !GetAtt 
+        - ApiGatewayCloudWatchLogsRole
+        - Arn
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: dd0d96e9-0e27-45bc-a015-16b98b2da246
+  GreetingApiStage:
+    DependsOn:
+      - ApiGatewayAccount
+    Type: 'AWS::ApiGateway::Stage'
+    Properties:
+      DeploymentId: !Ref ApiDeployment
+      MethodSettings:
+        - DataTraceEnabled: true
+          HttpMethod: '*'
+          LoggingLevel: INFO
+          ResourcePath: /*
+      RestApiId: !Ref GreetingApi
+      StageName: LATEST
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: e6d30357-c4eb-4045-b42e-8178ab36615e
+  ApiDeployment:
+    Type: 'AWS::ApiGateway::Deployment'
+    DependsOn:
+      - GreetingRequest
+    Properties:
+      RestApiId: !Ref GreetingApi
+      StageName: DummyStage
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: c48f6ae0-221e-410f-9c2e-adbe72811048
+  GreetingResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref GreetingApi
+      ParentId: !GetAtt 
+        - GreetingApi
+        - RootResourceId
+      PathPart: greeting
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: e8989736-8de5-4cd9-a7f8-dcdc50e509a3
+  GreetingRequest:
+    DependsOn: LambdaPermission
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: GET
+      Integration:
+        Type: AWS
+        IntegrationHttpMethod: POST
+        Uri: !Join 
+          - ''
+          - - 'arn:aws:apigateway:'
+            - !Ref 'AWS::Region'
+            - ':lambda:path/2015-03-31/functions/'
+            - !GetAtt 
+              - GreetingLambda
+              - Arn
+            - /invocations
+        IntegrationResponses:
+          - StatusCode: 200
+        RequestTemplates:
+          application/json: !Join 
+            - ''
+            - - '{'
+              - '  "name": "$input.params(''name'')"'
+              - '}'
+      RequestParameters:
+        method.request.querystring.name: false
+      ResourceId: !Ref GreetingResource
+      RestApiId: !Ref GreetingApi
+      MethodResponses:
+        - StatusCode: 200
+    Metadata:
+      'AWS::CloudFormation::Designer':
+        id: 7220ebd8-4853-46e7-8e3c-ed5315d64165
+Outputs:
+  RootUrl:
+    Description: Root URL of the API gateway
+    Value: !Join 
+      - ''
+      - - 'https://'
+        - !Ref GreetingApi
+        - .execute-api.
+        - !Ref 'AWS::Region'
+        - .amazonaws.com
+Metadata:
+  'AWS::CloudFormation::Designer':
+    5aa8b1eb-c877-49df-9c3d-0aee7ce9ffc0:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 60
+        'y': 570
+      z: 1
+      embeds: []
+    dd0d96e9-0e27-45bc-a015-16b98b2da246:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 180
+        'y': 570
+      z: 1
+      embeds: []
+    56a56554-d271-4172-a993-fdaeede7e8d3:
+      size:
+        width: 510
+        height: 420
+      position:
+        x: 60
+        'y': 90
+      z: 1
+      embeds:
+        - e8989736-8de5-4cd9-a7f8-dcdc50e509a3
+        - c48f6ae0-221e-410f-9c2e-adbe72811048
+        - e6d30357-c4eb-4045-b42e-8178ab36615e
+    e8989736-8de5-4cd9-a7f8-dcdc50e509a3:
+      size:
+        width: 240
+        height: 240
+      position:
+        x: 90
+        'y': 150
+      z: 2
+      parent: 56a56554-d271-4172-a993-fdaeede7e8d3
+      embeds:
+        - 7220ebd8-4853-46e7-8e3c-ed5315d64165
+      iscontainedinside:
+        - 56a56554-d271-4172-a993-fdaeede7e8d3
+    7db9701a-1c45-4b2e-9d0b-053301ebfd62:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 300
+        'y': 570
+      z: 1
+      embeds: []
+    7a920828-29d1-41fc-9dd6-bc84f956037f:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 420
+        'y': 570
+      z: 1
+      embeds: []
+    ef15fb8c-650d-43fa-88ba-e0ffec9630ae:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 540
+        'y': 570
+      z: 1
+      embeds: []
+      isassociatedwith:
+        - 7a920828-29d1-41fc-9dd6-bc84f956037f
+    7220ebd8-4853-46e7-8e3c-ed5315d64165:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 120
+        'y': 210
+      z: 3
+      parent: e8989736-8de5-4cd9-a7f8-dcdc50e509a3
+      embeds: []
+      iscontainedinside:
+        - e8989736-8de5-4cd9-a7f8-dcdc50e509a3
+        - 56a56554-d271-4172-a993-fdaeede7e8d3
+      dependson:
+        - ef15fb8c-650d-43fa-88ba-e0ffec9630ae
+    c48f6ae0-221e-410f-9c2e-adbe72811048:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 390
+        'y': 150
+      z: 2
+      parent: 56a56554-d271-4172-a993-fdaeede7e8d3
+      embeds: []
+      iscontainedinside:
+        - 56a56554-d271-4172-a993-fdaeede7e8d3
+      dependson:
+        - 7220ebd8-4853-46e7-8e3c-ed5315d64165
+    e6d30357-c4eb-4045-b42e-8178ab36615e:
+      size:
+        width: 60
+        height: 60
+      position:
+        x: 390
+        'y': 270
+      z: 2
+      parent: 56a56554-d271-4172-a993-fdaeede7e8d3
+      embeds: []
+      isassociatedwith:
+        - c48f6ae0-221e-410f-9c2e-adbe72811048
+      iscontainedinside:
+        - 56a56554-d271-4172-a993-fdaeede7e8d3
+      dependson:
+        - dd0d96e9-0e27-45bc-a015-16b98b2da246
